@@ -175,6 +175,28 @@ def show_monitor_page():
             text-align: center; padding: 10px; border: 1px solid #EEE; 
             border-radius: 8px; background: #F9F9F9; margin-bottom: 5px;
         }
+        
+        /* Dark Theme Support */
+        @media (prefers-color-scheme: dark) {
+            .card {
+                background-color: #1E1E1E;
+                border-color: #333333;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            }
+            .metric-label { color: #BBBBBB; }
+            .metric-value { color: #FFFFFF; }
+            .ticker-card {
+                background: #1E1E1E;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+            }
+            .day-card {
+                background: #2D2D2D;
+                border-color: #444444;
+                color: #EEEEEE;
+            }
+            .sub-header { color: #90A4AE; }
+            .day-card .day-label { color: #64B5F6 !important; }
+        }
         .profit-badge {
             background: #E8F5E9; color: #2E7D32; padding: 2px 6px; 
             border-radius: 4px; font-size: 0.7rem; font-weight: 700;
@@ -401,6 +423,89 @@ def show_monitor_page():
 
     # --- UI Rendering ---
     ticker_res = st.session_state.get('ticker_res', {})
+    
+    # --- Weekly Trading Playbook (Day-of-Week) --- MOVED TO TOP
+    st.markdown('<div class="main-header" style="font-size: 1.8rem; border-bottom: 2px solid #1E88E5; margin-bottom: 1rem;">📅 Weekly Trading Playbook (Day-of-Week)</div>', unsafe_allow_html=True)
+    
+    mon_df = pd.DataFrame(st.session_state['monitor_data_v2']) if st.session_state['monitor_data_v2'] else pd.DataFrame()
+    min_df = pd.DataFrame(st.session_state['minute_data_v2']) if st.session_state['minute_data_v2'] else pd.DataFrame()
+    dow_patterns = st.session_state.get('dow_patterns', {})
+
+    if dow_patterns:
+        # Auto-select SPEC (index 4 in symbols if using symbols, or find index in list)
+        playbook_symbols = list(dow_patterns.keys())
+        default_index = 0
+        if "SPEC_THB" in playbook_symbols:
+            default_index = playbook_symbols.index("SPEC_THB")
+        elif "SPEC" in playbook_symbols:
+            default_index = playbook_symbols.index("SPEC")
+
+        selected_sym = st.selectbox("Select Currency for Daily Guide", playbook_symbols, index=default_index)
+        patterns = dow_patterns[selected_sym]
+        
+        cols = st.columns(7)
+        days_full = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        
+        # Reorder days to start from today (today is index 0 in this new list)
+        today_idx = datetime.date.today().weekday()
+        days = days_full[today_idx:] + days_full[:today_idx]
+        
+        day_th = {'Monday':'จันทร์', 'Tuesday':'อังคาร', 'Wednesday':'พุธ', 'Thursday':'พฤหัส', 'Friday':'ศุกร์', 'Saturday':'เสาร์', 'Sunday':'อาทิตย์'}
+        
+        for i_offset, day in enumerate(days):
+            with cols[i_offset]:
+                # i here is the original index for forecast calculation
+                original_idx = days_full.index(day)
+                symbol_data = dow_patterns.get(selected_sym, {})
+                patterns_day = symbol_data.get('patterns', {})
+                
+                p = patterns_day.get(day, {'Peak': 'N/A', 'Bottom': 'N/A', 'Avg High': 0, 'Max High': 0, 'Avg Low': 0, 'Min Low': 0, 'Conf Peak': 0, 'Conf Bottom': 0, 'Profit Pct': 0, 'High Ratio': 0, 'Low Ratio': 0, 'Trend': 0})
+                drift = p.get('Trend', symbol_data.get('daily_drift', 0))
+                
+                # --- FORWARD LOOKING FORECAST ---
+                today = datetime.date.today()
+                # Use i_offset to calculate days ahead (0 for today, 1 for tomorrow, etc.)
+                days_ahead = i_offset
+                # Wait, if i_offset is 0, it's today. But the original code had:
+                # days_ahead = (original_idx - today.weekday() + 7) % 7
+                # if days_ahead == 0: days_ahead = 7
+                # We want the *next* occurrence if it's in the past, but since we start from today,
+                # i_offset 0 is today, i_offset 1 is tomorrow, etc.
+                
+                forecast_date = today + datetime.timedelta(days=days_ahead)
+                
+                c_price = ticker_res.get(selected_sym.replace("THB_", "")+"_THB", {}).get('last', p['Avg High'])
+                forecast_base = float(c_price) * (1 + drift * days_ahead)
+                
+                f_high = forecast_base * p['High Ratio']
+                f_low = forecast_base * p['Low Ratio']
+                
+                st.markdown(f"""
+                    <div class="day-card" style="position:relative; border-top: 3px solid #1E88E5">
+                        <div class="day-label" style="font-size:0.8rem">
+                            {day_th[day]}<br/>
+                            <span style="font-size:0.65rem; color:#666">{forecast_date.strftime('%d %b')}</span>
+                        </div>
+                        <hr style="margin:5px 0"/>
+                        <div class="price-section">
+                            <span style="font-size:0.6rem; color:#43A047; font-weight:700">🔮 Forecast High ({get_safety_window(p['Peak'])})</span><br/>
+                            <span style="font-size:1.0rem; font-weight:700; color:#2E7D32">{f_high:,.2f}</span>
+                        </div>
+                        <div class="price-section">
+                            <span style="font-size:0.6rem; color:#E53935; font-weight:700">🔮 Forecast Low ({get_safety_window(p['Bottom'])})</span><br/>
+                            <span style="font-size:1.0rem; font-weight:700; color:#C62828">{f_low:,.2f}</span>
+                        </div>
+                        <div style="font-size:0.55rem; color:#999; margin-top:5px">
+                            Trend: {drift*100:+.2f}%/day
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+        
+        st.info("💡 **Tip**: ใช้ข้อมูลนี้เพื่อดูว่าโดยปกติแล้วในแต่ละวัน ราคาของเหรียญนี้มักจะพุ่งหรือดิ่งในช่วงเวลาใด เพื่อวางแผนการเข้าซื้อ/ขายล่วงหน้า")
+    else:
+        st.info("Playbook is being generated...")
+
+    st.divider()
     st.subheader("⚡ Real-time Ticker")
     t_cols = st.columns(len(symbols))
     for i, sym in enumerate(symbols):
@@ -418,73 +523,9 @@ def show_monitor_page():
 
     st.divider()
     
-    main_tabs = st.tabs(["� Weekly Trading Playbook", "�💎 Strategic Overview", "🕒 Daily Detail", "📊 Historical Logs"])
+    main_tabs = st.tabs(["💎 Strategic Overview", "🕒 Daily Detail", "📊 Historical Logs"])
     
-    mon_df = pd.DataFrame(st.session_state['monitor_data_v2']) if st.session_state['monitor_data_v2'] else pd.DataFrame()
-    min_df = pd.DataFrame(st.session_state['minute_data_v2']) if st.session_state['minute_data_v2'] else pd.DataFrame()
-    dow_patterns = st.session_state.get('dow_patterns', {})
-
     with main_tabs[0]:
-        st.subheader("📅 Weekly Trading Playbook (Day-of-Week)")
-        st.markdown("วิเคราะห์ช่วงเวลา Peak/Bottom แยกตามวันในสัปดาห์ (สถิติรอบ 3 เดือนล่าสุด)")
-        if dow_patterns:
-            selected_sym = st.selectbox("Select Currency for Daily Guide", list(dow_patterns.keys()))
-            patterns = dow_patterns[selected_sym]
-            
-            cols = st.columns(7)
-            days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-            day_th = {'Monday':'จันทร์', 'Tuesday':'อังคาร', 'Wednesday':'พุธ', 'Thursday':'พฤหัส', 'Friday':'ศุกร์', 'Saturday':'เสาร์', 'Sunday':'อาทิตย์'}
-            
-            for i, day in enumerate(days):
-                with cols[i]:
-                    symbol_data = dow_patterns.get(selected_sym, {})
-                    patterns = symbol_data.get('patterns', {})
-                    # We'll use day-specific trend from patterns if available
-                    
-                    p = patterns.get(day, {'Peak': 'N/A', 'Bottom': 'N/A', 'Avg High': 0, 'Max High': 0, 'Avg Low': 0, 'Min Low': 0, 'Conf Peak': 0, 'Conf Bottom': 0, 'Profit Pct': 0, 'High Ratio': 0, 'Low Ratio': 0, 'Trend': 0})
-                    drift = p.get('Trend', symbol_data.get('daily_drift', 0))
-                    
-                    # --- FORWARD LOOKING FORECAST ---
-                    # Calculate next occurrence of this day
-                    today = datetime.date.today()
-                    days_ahead = (i - today.weekday() + 7) % 7
-                    if days_ahead == 0: days_ahead = 7 # Next week if today
-                    forecast_date = today + datetime.timedelta(days=days_ahead)
-                    
-                    # Adjust current price by drift for future date
-                    c_price = ticker_res.get(selected_sym.replace("THB_", "")+"_THB", {}).get('last', p['Avg High'])
-                    forecast_base = float(c_price) * (1 + drift * days_ahead)
-                    
-                    f_high = forecast_base * p['High Ratio']
-                    f_low = forecast_base * p['Low Ratio']
-                    
-                    st.markdown(f"""
-                        <div class="day-card" style="position:relative; border-top: 3px solid #1E88E5">
-                            <div class="day-label" style="font-size:0.8rem">
-                                {day_th[day]}<br/>
-                                <span style="font-size:0.65rem; color:#666">{forecast_date.strftime('%d %b')}</span>
-                            </div>
-                            <hr style="margin:5px 0"/>
-                            <div class="price-section">
-                                <span style="font-size:0.6rem; color:#43A047; font-weight:700">🔮 Forecast High ({get_safety_window(p['Peak'])})</span><br/>
-                                <span style="font-size:1.0rem; font-weight:700; color:#2E7D32">{f_high:,.2f}</span>
-                            </div>
-                            <div class="price-section">
-                                <span style="font-size:0.6rem; color:#E53935; font-weight:700">🔮 Forecast Low ({get_safety_window(p['Bottom'])})</span><br/>
-                                <span style="font-size:1.0rem; font-weight:700; color:#C62828">{f_low:,.2f}</span>
-                            </div>
-                            <div style="font-size:0.55rem; color:#999; margin-top:5px">
-                                Trend: {drift*100:+.2f}%/day
-                            </div>
-                        </div>
-                    """, unsafe_allow_html=True)
-            
-            st.divider()
-            st.info("💡 **Tip**: ใช้ข้อมูลนี้เพื่อดูว่าโดยปกติแล้วในแต่ละวัน ราคาของเหรียญนี้มักจะพุ่งหรือดิ่งในช่วงเวลาใด เพื่อวางแผนการเข้าซื้อ/ขายล่วงหน้า")
-        else:
-            st.info("Playbook is being generated...")
-
-    with main_tabs[1]:
         st.subheader("✨ Tactical High/Low Patterns")
         st.markdown("""
             สรุปสถิติเพื่อหาจังหวะเทรด:
@@ -535,7 +576,7 @@ def show_monitor_page():
             st.info("Generating insights (Analyzing historical data)...")
 
 
-    with main_tabs[2]:
+    with main_tabs[1]:
         st.subheader("�🕒 Minute-Level Time Distribution")
         if not min_df.empty:
             min_df['Hour'] = min_df['Time High'].apply(lambda x: int(x.split(':')[0]))
@@ -565,7 +606,7 @@ def show_monitor_page():
         else:
             st.info("No distribution data.")
 
-    with main_tabs[3]:
+    with main_tabs[2]:
         st.subheader("📜 Historical Log Archive")
         if not mon_df.empty:
             sel_sym = st.selectbox("Filter History by Symbol", sorted(mon_df['Symbol'].unique()))
