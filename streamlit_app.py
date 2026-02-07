@@ -225,15 +225,19 @@ def show_monitor_page():
             .metric-label { font-size: 0.8rem; }
             .ticker-card { padding: 8px; }
             .day-card { 
-                padding: 12px; display: flex; justify-content: space-between; 
-                align-items: center; text-align: left; gap: 8px;
+                padding: 15px; display: flex; justify-content: space-between; 
+                align-items: center; text-align: left; gap: 15px;
             }
             .day-card hr { display: none; }
-            .day-card .day-label { width: 75px; font-weight: 700; color: #1E88E5; flex-shrink: 0; line-height: 1.2; }
-            .day-card .stats-group { flex: 1; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-            .day-card .price-row { display: flex; justify-content: flex-end; align-items: baseline; gap: 8px; width: 100%; }
-            .day-card .price-section { text-align: right; }
-            .day-card .trend-section { font-size: 0.55rem; color: #999; text-align: right; width: 100%; border-top: 1px solid #444; padding-top: 2px; }
+            .day-card .day-label { width: 85px; font-weight: 700; color: #1E88E5; flex-shrink: 0; line-height: 1.2; }
+            .day-card .stats-group { flex: 1; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+            .day-card .price-section { text-align: right; width: 100%; }
+            .day-card .trend-section { font-size: 0.7rem; color: #999; text-align: right; width: 100%; border-top: 1px solid #444; padding-top: 4px; margin-top: 2px; }
+            
+            .day-card .day-name-mobile { font-size: 1.1rem; }
+            .day-card .day-date-mobile { font-size: 0.75rem; color: #888; }
+            .day-card .price-label-mobile { font-size: 0.75rem; font-weight: 700; }
+            .day-card .price-value-mobile { font-size: 1.35rem; font-weight: 800; }
             
             .profit-badge { font-size: 0.6rem; padding: 1px 4px; }
             .conf-badge { font-size: 0.55rem; }
@@ -487,18 +491,18 @@ def show_monitor_page():
                 st.markdown(f"""
                     <div class="day-card" style="position:relative; border-top: 3px solid #1E88E5">
                         <div class="day-label">
-                            <span style="font-size:0.9rem">{day_th[day]}</span><br/>
-                            <span style="font-size:0.65rem; color:#666">{forecast_date.strftime('%d %b')}</span>
+                            <span class="day-name-mobile">{day_th[day]}</span><br/>
+                            <span class="day-date-mobile">{forecast_date.strftime('%d %b')}</span>
                         </div>
                         <hr style="margin:5px 0"/>
                         <div class="stats-group">
                             <div class="price-section">
-                                <span style="font-size:0.6rem; color:#43A047; font-weight:700">🔮 High ({get_safety_window(p['Peak'])})</span><br/>
-                                <span style="font-size:1.1rem; font-weight:700; color:#2E7D32">{f_high:,.2f}</span>
+                                <span class="price-label-mobile" style="color:#43A047">🔮 High ({get_safety_window(p['Peak'])})</span><br/>
+                                <span class="price-value-mobile" style="color:#2E7D32">{f_high:,.2f}</span>
                             </div>
                             <div class="price-section">
-                                <span style="font-size:0.6rem; color:#E53935; font-weight:700">🔮 Low ({get_safety_window(p['Bottom'])})</span><br/>
-                                <span style="font-size:1.1rem; font-weight:700; color:#C62828">{f_low:,.2f}</span>
+                                <span class="price-label-mobile" style="color:#E53935">🔮 Low ({get_safety_window(p['Bottom'])})</span><br/>
+                                <span class="price-value-mobile" style="color:#C62828">{f_low:,.2f}</span>
                             </div>
                             <div class="trend-section">
                                 Trend: {drift*100:+.2f}%/day
