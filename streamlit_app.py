@@ -556,12 +556,27 @@ def show_monitor_page():
             
             # Sparkline
             spark_html = ""
-            if not min_df.empty and coin_only in min_df['Symbol'].values: # Use coin_only for symbol matching
-                s_min = min_df[min_df['Symbol'] == coin_only].tail(24) # Last 24 points
+            if not min_df.empty and coin_only in min_df['Symbol'].values:
+                s_min = min_df[min_df['Symbol'] == coin_only].tail(24)
                 prices = s_min['Close'].tolist()
                 spark_html = get_sparkline(prices, color)
             
-            ticker_html += f'<div class="ticker-row"><div class="ticker-coin-info"><img src="{logo_base.format(coin_only)}" class="ticker-logo" onerror="this.src=\'https://www.bitkub.com/static/images/icons/default.png\'"><div><div class="ticker-symbol">{coin_only}<span style="font-size:0.7rem; color:#666">/THB</span></div><div class="ticker-volume">ปริมาณ: {vol_str}</div></div></div><div class="ticker-sparkline-box">{spark_html}</div><div class="ticker-price-box"><div class="ticker-last-price">{float(data[\'last\']):,.2f}</div><div class="ticker-pct" style="color: {color}">{"+" if pct > 0 else ""}{pct}%</div></div></div>'
+            # Avoid backslashes in f-strings for compatibility
+            last_val = float(data['last'])
+            val_pct = f"{'+' if pct > 0 else ''}{pct}%"
+            
+            row_html = (
+                f'<div class="ticker-row">'
+                f'<div class="ticker-coin-info">'
+                f'<img src="{logo_base.format(coin_only)}" class="ticker-logo" onerror="this.src=\'https://www.bitkub.com/static/images/icons/default.png\'">'
+                f'<div><div class="ticker-symbol">{coin_only}<span style="font-size:0.7rem; color:#666">/THB</span></div>'
+                f'<div class="ticker-volume">ปริมาณ: {vol_str}</div></div></div>'
+                f'<div class="ticker-sparkline-box">{spark_html}</div>'
+                f'<div class="ticker-price-box">'
+                f'<div class="ticker-last-price">{last_val:,.2f}</div>'
+                f'<div class="ticker-pct" style="color: {color}">{val_pct}</div></div></div>'
+            )
+            ticker_html += row_html
             
     ticker_html += "</div>"
     st.markdown(ticker_html, unsafe_allow_html=True)
