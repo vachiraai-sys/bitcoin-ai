@@ -176,73 +176,44 @@ def show_monitor_page():
             border-radius: 8px; background: #F9F9F9; margin-bottom: 5px;
         }
         
-        /* Dark Theme Support */
-        @media (prefers-color-scheme: dark) {
-            .card {
-                background-color: #1E1E1E;
-                border-color: #333333;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            }
-            .metric-label { color: #BBBBBB; }
-            .metric-value { color: #FFFFFF; }
-            .ticker-card {
-                background: #1E1E1E;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-            }
-            .day-card {
-                background: #2D2D2D;
-                border-color: #444444;
-                color: #EEEEEE;
-            }
-            .sub-header { color: #90A4AE; }
-            .day-card .day-label { color: #64B5F6 !important; }
+        /* Weather App Style Redesign */
+        .playbook-container {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 10px;
+            margin-bottom: 20px;
         }
-        .profit-badge {
-            background: #E8F5E9; color: #2E7D32; padding: 2px 6px; 
-            border-radius: 4px; font-size: 0.7rem; font-weight: 700;
+        .playbook-row {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            gap: 15px;
         }
-        .conf-badge {
-            font-size: 0.6rem; color: #9E9E9E; font-weight: 500;
-        }
+        .playbook-row:last-child { border-bottom: none; }
         
-        /* Tablet (iPad) Optimizations */
-        @media (min-width: 769px) and (max-width: 1024px) {
-            .main-header { font-size: 2.2rem; }
-            .sub-header { font-size: 1.1rem; margin-bottom: 1.5rem; }
-            .card { padding: 1.2rem; }
-            .metric-value { font-size: 1.2rem; }
-            .day-card { padding: 8px; font-size: 0.9rem; }
-            .day-card .day-label { font-size: 1rem; }
-            .price-section { font-size: 0.8rem; }
+        .playbook-day { width: 60px; font-weight: 700; font-size: 1.1rem; }
+        .playbook-icon { width: 30px; text-align: center; font-size: 1.4rem; }
+        .playbook-price { width: 80px; text-align: left; font-weight: 600; font-size: 1rem; color: #90A4AE; }
+        .playbook-range { flex: 1; height: 4px; background: rgba(255,255,255,0.1); border-radius: 10px; position: relative; margin: 0 10px; }
+        .playbook-range-fill { 
+            position: absolute; height: 100%; border-radius: 10px;
+            background: linear-gradient(90deg, #E53935, #43A047); 
         }
-
-        /* Mobile Optimizations */
+        .playbook-range-dot {
+            position: absolute; width: 6px; height: 6px; background: white; 
+            border-radius: 50%; top: -1px; box-shadow: 0 0 5px white;
+        }
+        .playbook-target { width: 90px; text-align: right; font-weight: 700; font-size: 1.15rem; color: #FFFFFF; }
+        
         @media (max-width: 768px) {
-            .main-header { font-size: 1.8rem; }
-            .sub-header { font-size: 1rem; margin-bottom: 1rem; }
-            .card { padding: 1rem; margin-bottom: 0.5rem; }
-            .metric-value { font-size: 1.1rem; }
-            .metric-label { font-size: 0.8rem; }
-            .ticker-card { padding: 8px; }
-            .day-card { 
-                padding: 15px; display: flex; justify-content: space-between; 
-                align-items: center; text-align: left; gap: 15px;
-            }
-            .day-card hr { display: none; }
-            .day-card .day-label { width: 85px; font-weight: 700; color: #1E88E5; flex-shrink: 0; line-height: 1.2; }
-            .day-card .stats-group { flex: 1; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-            .day-card .price-section { text-align: right; width: 100%; }
-            .day-card .trend-section { font-size: 0.7rem; color: #999; text-align: right; width: 100%; border-top: 1px solid #444; padding-top: 4px; margin-top: 2px; }
-            
-            .day-card .day-name-mobile { font-size: 1.1rem; }
-            .day-card .day-date-mobile { font-size: 0.75rem; color: #888; }
-            .day-card .price-label-mobile { font-size: 0.75rem; font-weight: 700; }
-            .day-card .price-value-mobile { font-size: 1.35rem; font-weight: 800; }
-            
-            .profit-badge { font-size: 0.6rem; padding: 1px 4px; }
-            .conf-badge { font-size: 0.55rem; }
-            .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-            .stTabs [data-baseweb="tab"] { padding: 5px 10px; }
+            .playbook-day { width: 45px; font-size: 1rem; }
+            .playbook-icon { width: 25px; font-size: 1.2rem; }
+            .playbook-price { width: 60px; font-size: 0.9rem; }
+            .playbook-target { width: 75px; font-size: 1rem; }
+            .playbook-row { padding: 10px 10px; gap: 8px; }
         }
         </style>
     """, unsafe_allow_html=True)
@@ -432,15 +403,14 @@ def show_monitor_page():
     # --- UI Rendering ---
     ticker_res = st.session_state.get('ticker_res', {})
     
-    # --- Weekly Trading Playbook (Day-of-Week) --- MOVED TO TOP
-    st.markdown('<div class="main-header" style="font-size: 1.8rem; border-bottom: 2px solid #1E88E5; margin-bottom: 1rem;">📅 Weekly Trading Playbook (Day-of-Week)</div>', unsafe_allow_html=True)
+    # --- Weekly Trading Playbook (Day-of-Week) --- WEATHER APP STYLE
+    st.markdown('<div class="main-header" style="font-size: 1.8rem; border-bottom: 2px solid #1E88E5; margin-bottom: 1rem;">📅 Weekly Trading Playbook</div>', unsafe_allow_html=True)
     
     mon_df = pd.DataFrame(st.session_state['monitor_data_v2']) if st.session_state['monitor_data_v2'] else pd.DataFrame()
     min_df = pd.DataFrame(st.session_state['minute_data_v2']) if st.session_state['minute_data_v2'] else pd.DataFrame()
     dow_patterns = st.session_state.get('dow_patterns', {})
 
     if dow_patterns:
-        # Auto-select SPEC (index 4 in symbols if using symbols, or find index in list)
         playbook_symbols = list(dow_patterns.keys())
         default_index = 0
         if "SPEC_THB" in playbook_symbols:
@@ -449,69 +419,68 @@ def show_monitor_page():
             default_index = playbook_symbols.index("SPEC")
 
         selected_sym = st.selectbox("Select Currency for Daily Guide", playbook_symbols, index=default_index)
-        patterns = dow_patterns[selected_sym]
+        symbol_data = dow_patterns.get(selected_sym, {})
+        patterns_data = symbol_data.get('patterns', {})
         
-        cols = st.columns(7)
         days_full = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        day_th_short = {'Monday':'จ.', 'Tuesday':'อ.', 'Wednesday':'พ.', 'Thursday':'พฤ.', 'Friday':'ศ.', 'Saturday':'ส.', 'Sunday':'อา.'}
         
-        # Reorder days to start from today (today is index 0 in this new list)
         today_idx = datetime.date.today().weekday()
-        days = days_full[today_idx:] + days_full[:today_idx]
+        days_sorted = days_full[today_idx:] + days_full[:today_idx]
         
-        day_th = {'Monday':'จันทร์', 'Tuesday':'อังคาร', 'Wednesday':'พุธ', 'Thursday':'พฤหัส', 'Friday':'ศุกร์', 'Saturday':'เสาร์', 'Sunday':'อาทิตย์'}
+        # Start Playbook Glass Container
+        playbook_html = '<div class="playbook-container">'
         
-        for i_offset, day in enumerate(days):
-            with cols[i_offset]:
-                # i here is the original index for forecast calculation
-                original_idx = days_full.index(day)
-                symbol_data = dow_patterns.get(selected_sym, {})
-                patterns_day = symbol_data.get('patterns', {})
-                
-                p = patterns_day.get(day, {'Peak': 'N/A', 'Bottom': 'N/A', 'Avg High': 0, 'Max High': 0, 'Avg Low': 0, 'Min Low': 0, 'Conf Peak': 0, 'Conf Bottom': 0, 'Profit Pct': 0, 'High Ratio': 0, 'Low Ratio': 0, 'Trend': 0})
-                drift = p.get('Trend', symbol_data.get('daily_drift', 0))
-                
-                # --- FORWARD LOOKING FORECAST ---
-                today = datetime.date.today()
-                # Use i_offset to calculate days ahead (0 for today, 1 for tomorrow, etc.)
-                days_ahead = i_offset
-                # Wait, if i_offset is 0, it's today. But the original code had:
-                # days_ahead = (original_idx - today.weekday() + 7) % 7
-                # if days_ahead == 0: days_ahead = 7
-                # We want the *next* occurrence if it's in the past, but since we start from today,
-                # i_offset 0 is today, i_offset 1 is tomorrow, etc.
-                
-                forecast_date = today + datetime.timedelta(days=days_ahead)
-                
-                c_price = ticker_res.get(selected_sym.replace("THB_", "")+"_THB", {}).get('last', p['Avg High'])
-                forecast_base = float(c_price) * (1 + drift * days_ahead)
-                
-                f_high = forecast_base * p['High Ratio']
-                f_low = forecast_base * p['Low Ratio']
-                
-                st.markdown(f"""
-                    <div class="day-card" style="position:relative; border-top: 3px solid #1E88E5">
-                        <div class="day-label">
-                            <span class="day-name-mobile">{day_th[day]}</span><br/>
-                            <span class="day-date-mobile">{forecast_date.strftime('%d %b')}</span>
-                        </div>
-                        <hr style="margin:5px 0"/>
-                        <div class="stats-group">
-                            <div class="price-section">
-                                <span class="price-label-mobile" style="color:#43A047">🔮 High ({get_safety_window(p['Peak'])})</span><br/>
-                                <span class="price-value-mobile" style="color:#2E7D32">{f_high:,.2f}</span>
-                            </div>
-                            <div class="price-section">
-                                <span class="price-label-mobile" style="color:#E53935">🔮 Low ({get_safety_window(p['Bottom'])})</span><br/>
-                                <span class="price-value-mobile" style="color:#C62828">{f_low:,.2f}</span>
-                            </div>
-                            <div class="trend-section">
-                                Trend: {drift*100:+.2f}%/day
-                            </div>
-                        </div>
+        for i_offset, day in enumerate(days_sorted):
+            p = patterns_data.get(day, {'Trend': 0, 'Low Ratio': 0.95, 'High Ratio': 1.05, 'Peak': '12:00', 'Bottom': '00:00'})
+            drift = p.get('Trend', symbol_data.get('daily_drift', 0))
+            
+            # Icon calc
+            icon = "☀️"
+            if drift > 0.02: icon = "☀️"
+            elif drift > 0: icon = "⛅"
+            elif drift > -0.02: icon = "🌧️"
+            else: icon = "⛈️"
+            
+            # Forecast
+            today = datetime.date.today()
+            forecast_date = today + datetime.timedelta(days=i_offset)
+            c_price = float(ticker_res.get(selected_sym.replace("THB_", "")+"_THB", {}).get('last', 0))
+            if c_price == 0: c_price = p.get('Avg High', 1)
+            
+            forecast_base = c_price * (1 + drift * i_offset)
+            f_low = forecast_base * p['Low Ratio']
+            f_high = forecast_base * p['High Ratio']
+            
+            # Range Bar Calc
+            # We normalize the bar to +/- 10% around base
+            range_min = forecast_base * 0.9
+            range_max = forecast_base * 1.1
+            
+            fill_left = ((f_low - range_min) / (range_max - range_min)) * 100
+            fill_width = ((f_high - f_low) / (range_max - range_min)) * 100
+            
+            # Clamp
+            fill_left = max(0, min(90, fill_left))
+            fill_width = max(5, min(100 - fill_left, fill_width))
+            
+            day_label = "วันนี้" if i_offset == 0 else day_th_short[day]
+            
+            playbook_html += f"""
+                <div class="playbook-row">
+                    <div class="playbook-day">{day_label}</div>
+                    <div class="playbook-icon">{icon}</div>
+                    <div class="playbook-price">{f_low:,.2f}</div>
+                    <div class="playbook-range">
+                        <div class="playbook-range-fill" style="left: {fill_left}%; width: {fill_width}%;"></div>
                     </div>
-                """, unsafe_allow_html=True)
+                    <div class="playbook-target">{f_high:,.2f}</div>
+                </div>
+            """
         
-        st.info("💡 **Tip**: ใช้ข้อมูลนี้เพื่อดูว่าโดยปกติแล้วในแต่ละวัน ราคาของเหรียญนี้มักจะพุ่งหรือดิ่งในช่วงเวลาใด เพื่อวางแผนการเข้าซื้อ/ขายล่วงหน้า")
+        playbook_html += '</div>'
+        st.markdown(playbook_html, unsafe_allow_html=True)
+        st.info("💡 **Tip**: แผนภาพแสดงช่วงราคาสูง-ต่ำที่คาดการณ์ตามสถิติรายวัน (อ้างอิงราคาปัจจุบัน + Trend)")
     else:
         st.info("Playbook is being generated...")
 
