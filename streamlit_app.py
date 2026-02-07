@@ -435,12 +435,12 @@ def show_monitor_page():
             p = patterns_data.get(day, {'Trend': 0, 'Low Ratio': 0.95, 'High Ratio': 1.05, 'Peak': '12:00', 'Bottom': '00:00'})
             drift = p.get('Trend', symbol_data.get('daily_drift', 0))
             
-            # Icon calc
-            icon = "☀️"
-            if drift > 0.02: icon = "☀️"
-            elif drift > 0: icon = "⛅"
-            elif drift > -0.02: icon = "🌧️"
-            else: icon = "⛈️"
+            # Trading Icons
+            icon = "📈"
+            if drift > 0.02: icon = "🚀"
+            elif drift > 0: icon = "📈"
+            elif drift > -0.02: icon = "📉"
+            else: icon = "🐻"
             
             # Forecast
             today = datetime.date.today()
@@ -453,30 +453,18 @@ def show_monitor_page():
             f_high = forecast_base * p['High Ratio']
             
             # Range Bar Calc
-            # We normalize the bar to +/- 10% around base
             range_min = forecast_base * 0.9
             range_max = forecast_base * 1.1
             
             fill_left = ((f_low - range_min) / (range_max - range_min)) * 100
             fill_width = ((f_high - f_low) / (range_max - range_min)) * 100
             
-            # Clamp
             fill_left = max(0, min(90, fill_left))
             fill_width = max(5, min(100 - fill_left, fill_width))
             
             day_label = "วันนี้" if i_offset == 0 else day_th_short[day]
             
-            playbook_html += f"""
-                <div class="playbook-row">
-                    <div class="playbook-day">{day_label}</div>
-                    <div class="playbook-icon">{icon}</div>
-                    <div class="playbook-price">{f_low:,.2f}</div>
-                    <div class="playbook-range">
-                        <div class="playbook-range-fill" style="left: {fill_left}%; width: {fill_width}%;"></div>
-                    </div>
-                    <div class="playbook-target">{f_high:,.2f}</div>
-                </div>
-            """
+            playbook_html += f'<div class="playbook-row"><div class="playbook-day">{day_label}</div><div class="playbook-icon">{icon}</div><div class="playbook-price">{f_low:,.2f}</div><div class="playbook-range"><div class="playbook-range-fill" style="left: {fill_left}%; width: {fill_width}%;"></div></div><div class="playbook-target">{f_high:,.2f}</div></div>'
         
         playbook_html += '</div>'
         st.markdown(playbook_html, unsafe_allow_html=True)
