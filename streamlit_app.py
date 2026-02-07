@@ -225,12 +225,16 @@ def show_monitor_page():
             .metric-label { font-size: 0.8rem; }
             .ticker-card { padding: 8px; }
             .day-card { 
-                padding: 10px; display: flex; justify-content: space-between; 
-                align-items: center; text-align: left; 
+                padding: 12px; display: flex; justify-content: space-between; 
+                align-items: center; text-align: left; gap: 8px;
             }
             .day-card hr { display: none; }
-            .day-card .day-label { width: 70px; font-weight: 700; color: #1E88E5; flex-shrink: 0; }
-            .day-card .price-section { flex: 1; text-align: right; }
+            .day-card .day-label { width: 75px; font-weight: 700; color: #1E88E5; flex-shrink: 0; line-height: 1.2; }
+            .day-card .stats-group { flex: 1; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+            .day-card .price-row { display: flex; justify-content: flex-end; align-items: baseline; gap: 8px; width: 100%; }
+            .day-card .price-section { text-align: right; }
+            .day-card .trend-section { font-size: 0.55rem; color: #999; text-align: right; width: 100%; border-top: 1px solid #444; padding-top: 2px; }
+            
             .profit-badge { font-size: 0.6rem; padding: 1px 4px; }
             .conf-badge { font-size: 0.55rem; }
             .stTabs [data-baseweb="tab-list"] { gap: 10px; }
@@ -482,21 +486,23 @@ def show_monitor_page():
                 
                 st.markdown(f"""
                     <div class="day-card" style="position:relative; border-top: 3px solid #1E88E5">
-                        <div class="day-label" style="font-size:0.8rem">
-                            {day_th[day]}<br/>
+                        <div class="day-label">
+                            <span style="font-size:0.9rem">{day_th[day]}</span><br/>
                             <span style="font-size:0.65rem; color:#666">{forecast_date.strftime('%d %b')}</span>
                         </div>
                         <hr style="margin:5px 0"/>
-                        <div class="price-section">
-                            <span style="font-size:0.6rem; color:#43A047; font-weight:700">🔮 Forecast High ({get_safety_window(p['Peak'])})</span><br/>
-                            <span style="font-size:1.0rem; font-weight:700; color:#2E7D32">{f_high:,.2f}</span>
-                        </div>
-                        <div class="price-section">
-                            <span style="font-size:0.6rem; color:#E53935; font-weight:700">🔮 Forecast Low ({get_safety_window(p['Bottom'])})</span><br/>
-                            <span style="font-size:1.0rem; font-weight:700; color:#C62828">{f_low:,.2f}</span>
-                        </div>
-                        <div style="font-size:0.55rem; color:#999; margin-top:5px">
-                            Trend: {drift*100:+.2f}%/day
+                        <div class="stats-group">
+                            <div class="price-section">
+                                <span style="font-size:0.6rem; color:#43A047; font-weight:700">🔮 High ({get_safety_window(p['Peak'])})</span><br/>
+                                <span style="font-size:1.1rem; font-weight:700; color:#2E7D32">{f_high:,.2f}</span>
+                            </div>
+                            <div class="price-section">
+                                <span style="font-size:0.6rem; color:#E53935; font-weight:700">🔮 Low ({get_safety_window(p['Bottom'])})</span><br/>
+                                <span style="font-size:1.1rem; font-weight:700; color:#C62828">{f_low:,.2f}</span>
+                            </div>
+                            <div class="trend-section">
+                                Trend: {drift*100:+.2f}%/day
+                            </div>
                         </div>
                     </div>
                 """, unsafe_allow_html=True)
