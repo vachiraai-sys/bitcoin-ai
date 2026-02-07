@@ -540,14 +540,7 @@ def show_monitor_page():
     ticker_res = st.session_state.get('ticker_res', {})
     min_df = pd.DataFrame(st.session_state['minute_data_v2']) if st.session_state['minute_data_v2'] else pd.DataFrame()
     
-    ticker_html = """
-    <div class="ticker-container">
-        <div class="ticker-header">
-            <div style="width: 150px">สินทรัพย์ / ปริมาณ (THB)</div>
-            <div style="flex: 1; text-align: center">กราฟ 24 ชม.</div>
-            <div style="width: 140px; text-align: right">ราคาล่าสุด / % 24 ชม.</div>
-        </div>
-    """
+    ticker_html = '<div class="ticker-container"><div class="ticker-header"><div style="width: 150px">สินทรัพย์ / ปริมาณ (THB)</div><div style="flex: 1; text-align: center">กราฟ 24 ชม.</div><div style="width: 140px; text-align: right">ราคาล่าสุด / % 24 ชม.</div></div>'
     
     # Common bitkub logo base
     logo_base = "https://static.bitkubstatic.com/static/images/icons/{}.png"
@@ -568,24 +561,7 @@ def show_monitor_page():
                 prices = s_min['Close'].tolist()
                 spark_html = get_sparkline(prices, color)
             
-            ticker_html += f"""
-            <div class="ticker-row">
-                <div class="ticker-coin-info">
-                    <img src="{logo_base.format(coin_only)}" class="ticker-logo" onerror="this.src='https://www.bitkub.com/static/images/icons/default.png'">
-                    <div>
-                        <div class="ticker-symbol">{coin_only}<span style="font-size:0.7rem; color:#666">/THB</span></div>
-                        <div class="ticker-volume">ปริมาณ: {vol_str}</div>
-                    </div>
-                </div>
-                <div class="ticker-sparkline-box">
-                    {spark_html}
-                </div>
-                <div class="ticker-price-box">
-                    <div class="ticker-last-price">{float(data['last']):,.2f}</div>
-                    <div class="ticker-pct" style="color: {color}">{"+" if pct > 0 else ""}{pct}%</div>
-                </div>
-            </div>
-            """
+            ticker_html += f'<div class="ticker-row"><div class="ticker-coin-info"><img src="{logo_base.format(coin_only)}" class="ticker-logo" onerror="this.src=\'https://www.bitkub.com/static/images/icons/default.png\'"><div><div class="ticker-symbol">{coin_only}<span style="font-size:0.7rem; color:#666">/THB</span></div><div class="ticker-volume">ปริมาณ: {vol_str}</div></div></div><div class="ticker-sparkline-box">{spark_html}</div><div class="ticker-price-box"><div class="ticker-last-price">{float(data[\'last\']):,.2f}</div><div class="ticker-pct" style="color: {color}">{"+" if pct > 0 else ""}{pct}%</div></div></div>'
             
     ticker_html += "</div>"
     st.markdown(ticker_html, unsafe_allow_html=True)
