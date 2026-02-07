@@ -12,17 +12,37 @@ from main import read_csv_with_header_row3, normalize_transaction, fifo_profit_l
 
 st.set_page_config(page_title="Crypto Tracker & Market Monitor", layout="wide")
 
-def get_safety_window(time_str, minutes=15):
+def get_sparkline(prices, color="#43A047"):
+    if not prices or len(prices) < 2: return ""
+    min_p, max_p = min(prices), max(prices)
+    range_p = max_p - min_p if max_p > min_p else 1
+    
+    width, height = 100, 30
+    points = []
+    for i, p in enumerate(prices):
+        x = (i / (len(prices) - 1)) * width
+        y = height - ((p - min_p) / range_p) * height
+        points.append(f"{x},{y}")
+    
+    polyline = " ".join(points)
+    return f"""
+    <svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" preserveAspectRatio="none">
+        <polyline points="{polyline}" fill="none" stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M 0,{height} {" ".join([f"L {p}" for p in points])} L {width},{height} Z" fill="{color}" fill-opacity="0.1" />
+    </svg>
+    """
+
+def get_safety_window(time_str):
     try:
         dt = datetime.datetime.strptime(time_str, "%H:%M")
-        end = (dt + datetime.timedelta(minutes=minutes)).strftime("%H:%M")
+        end = (dt + datetime.timedelta(minutes=15)).strftime("%H:%M")
         return f"{time_str} - {end}"
     except:
         return time_str
 
 # --- NAVIGATION ---
 st.sidebar.title("🧭 Navigation")
-page = st.sidebar.radio("Go to", ["� Market Monitor", "�💰 FIFO & Tax Summary"])
+page = st.sidebar.radio("Go to", [" Market Monitor", "💰 FIFO & Tax Summary"])
 
 def show_fifo_page():
     st.title("💰 Crypto FIFO Profit/Loss Tracker")
@@ -170,13 +190,60 @@ def show_monitor_page():
         .ticker-card {
             background: white; padding: 10px; border-radius: 8px; 
             border-left: 4px solid #1E88E5; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 5px; /* Added margin-bottom for spacing */
         }
         .day-card {
             text-align: center; padding: 10px; border: 1px solid #EEE; 
             border-radius: 8px; background: #F9F9F9; margin-bottom: 5px;
         }
         
-        /* Weather App Style Redesign */
+        /* Professional Ticker Layout */
+        .ticker-container {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            padding: 10px 0;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .ticker-header {
+            display: flex;
+            padding: 5px 15px;
+            font-size: 0.75rem;
+            color: #777;
+            font-weight: 500;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .ticker-row {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            gap: 12px;
+        }
+        .ticker-row:last-child { border-bottom: none; }
+        
+        .ticker-coin-info { display: flex; align-items: center; gap: 12px; width: 150px; }
+        .ticker-logo { width: 32px; height: 32px; border-radius: 50%; }
+        .ticker-symbol { font-weight: 700; font-size: 1.1rem; color: #FFF; }
+        .ticker-volume { font-size: 0.75rem; color: #777; margin-top: 2px; }
+        
+        .ticker-sparkline-box { flex: 1; height: 30px; display: flex; align-items: center; justify-content: center; opacity: 0.8; }
+        .ticker-price-box { width: 140px; text-align: right; }
+        .ticker-last-price { font-weight: 700; font-size: 1.15rem; color: #FFF; }
+        .ticker-pct { font-size: 0.85rem; font-weight: 600; margin-top: 2px; }
+        
+        @media (max-width: 768px) {
+            .ticker-coin-info { width: 110px; gap: 8px; }
+            .ticker-logo { width: 28px; height: 28px; }
+            .ticker-symbol { font-size: 1rem; }
+            .ticker-sparkline-box { min-width: 60px; }
+            .ticker-price-box { width: 110px; }
+            .ticker-last-price { font-size: 1rem; }
+            .ticker-header { display: none; }
+            .ticker-row { padding: 12px 10px; gap: 8px; }
+        }
+        
+        /* Playbook Styles - Frosted Glass (Weather App Style) */
         .playbook-container {
             background: rgba(255, 255, 255, 0.05);
             backdrop-filter: blur(10px);
@@ -201,10 +268,6 @@ def show_monitor_page():
         .playbook-range-fill { 
             position: absolute; height: 100%; border-radius: 10px;
             background: linear-gradient(90deg, #E53935, #43A047); 
-        }
-        .playbook-range-dot {
-            position: absolute; width: 6px; height: 6px; background: white; 
-            border-radius: 50%; top: -1px; box-shadow: 0 0 5px white;
         }
         .playbook-target { width: 90px; text-align: right; font-weight: 700; font-size: 1.15rem; color: #FFFFFF; }
         
@@ -261,7 +324,7 @@ def show_monitor_page():
                         h_url = f"https://api.bitkub.com/tradingview/history?symbol={sym}&resolution=1D&from={start_ts_1y}&to={end_ts}"
                         res = requests.get(h_url).json()
                         if res.get('s') == 'ok':
-                            h_df = pd.DataFrame({'t': res['t'], 'h': res['h'], 'l': res['l']})
+                            h_df = pd.DataFrame({'t': res['t'], 'h': res['h'], 'l': res['l'], 'c': res['c']}) # Added 'c' for close
                             h_df['date'] = pd.to_datetime(h_df['t'], unit='s')
                             h_df['month'] = h_df['date'].dt.strftime('%Y-%m')
                             for month, group in h_df.groupby('month'):
@@ -288,18 +351,20 @@ def show_monitor_page():
                     h_url = f"https://api.bitkub.com/tradingview/history?symbol={sym}&resolution=1&from={start_ts}&to={end_ts}"
                     res = requests.get(h_url).json()
                     if res.get('s') == 'ok':
-                        m_df = pd.DataFrame({'t': res['t'], 'h': res['h'], 'l': res['l'], 'v': res.get('v', [0]*len(res['t']))})
+                        m_df = pd.DataFrame({'t': res['t'], 'h': res['h'], 'l': res['l'], 'c': res['c'], 'v': res.get('v', [0]*len(res['t']))}) # Added 'c' for close
                         m_df['dt'] = pd.to_datetime(m_df['t'], unit='s', utc=True).dt.tz_convert('Asia/Bangkok')
                         m_df['date'] = m_df['dt'].dt.date
                         m_df['time'] = m_df['dt'].dt.strftime('%H:%M')
                         m_df['volume'] = m_df['v']
+                        m_df['Close'] = m_df['c'] # Ensure 'Close' column exists for sparkline
                         for date, group in m_df.groupby('date'):
                             max_r = group.loc[group['h'].idxmax()]
                             min_r = group.loc[group['l'].idxmin()]
                             fetched_min.append({
                                 'Symbol': sym.replace("THB_", ""), 'Date': date, 'DayName': m_df[m_df['date']==date]['dt'].iloc[0].day_name(),
                                 'High': max_r['h'], 'Time High': max_r['time'], 'Vol at High': max_r['v'],
-                                'Low': min_r['l'], 'Time Low': min_r['time'], 'Vol at Low': min_r['v']
+                                'Low': min_r['l'], 'Time Low': min_r['time'], 'Vol at Low': min_r['v'],
+                                'Close': group['c'].iloc[-1] # Add last close price for the day
                             })
             
             st.session_state['minute_data_v2'] = fetched_min
@@ -374,7 +439,6 @@ def show_monitor_page():
                         min_l = c_price * bottom_rows['LowRatio'].min()
                         
                         profit_pct = ((avg_h - avg_l) / avg_l) * 100 if avg_l > 0 else 0
-                        
                         patterns[d] = {
                             'Peak': peak_bucket,
                             'Bottom': bottom_bucket,
@@ -472,23 +536,59 @@ def show_monitor_page():
     else:
         st.info("Playbook is being generated...")
 
-    st.divider()
-    st.subheader("⚡ Real-time Ticker")
-    t_cols = st.columns(len(symbols))
-    for i, sym in enumerate(symbols):
+    # --- Real-time Ticker --- EXCHANGE STYLE
+    ticker_res = st.session_state.get('ticker_res', {})
+    min_df = pd.DataFrame(st.session_state['minute_data_v2']) if st.session_state['minute_data_v2'] else pd.DataFrame()
+    
+    ticker_html = """
+    <div class="ticker-container">
+        <div class="ticker-header">
+            <div style="width: 150px">สินทรัพย์ / ปริมาณ (THB)</div>
+            <div style="flex: 1; text-align: center">กราฟ 24 ชม.</div>
+            <div style="width: 140px; text-align: right">ราคาล่าสุด / % 24 ชม.</div>
+        </div>
+    """
+    
+    # Common bitkub logo base
+    logo_base = "https://static.bitkubstatic.com/static/images/icons/{}.png"
+    
+    for sym in symbols:
         if sym in ticker_res:
             data = ticker_res[sym]
-            color = "#43A047" if float(data['percent_change']) >= 0 else "#E53935"
-            with t_cols[i]:
-                st.markdown(f"""
-                    <div class="ticker-card" style="border-left-color: {color}">
-                        <div style="font-size:0.7rem; color:#666">{sym.replace("_THB", "")}</div>
-                        <div style="font-size:1.1rem; font-weight:700">{float(data['last']):,.2f}</div>
-                        <div style="font-size:0.7rem; color:{color}">{data['percent_change']}%</div>
+            coin_only = sym.split('_')[0]
+            pct = float(data['percent_change'])
+            color = "#43A047" if pct >= 0 else "#E53935"
+            volume = float(data.get('base_volume', 0)) * float(data['last']) # Approximate volume in THB
+            vol_str = f"{volume/1e6:,.2f}M" if volume >= 1e6 else f"{volume/1e3:,.2f}K"
+            
+            # Sparkline
+            spark_html = ""
+            if not min_df.empty and coin_only in min_df['Symbol'].values: # Use coin_only for symbol matching
+                s_min = min_df[min_df['Symbol'] == coin_only].tail(24) # Last 24 points
+                prices = s_min['Close'].tolist()
+                spark_html = get_sparkline(prices, color)
+            
+            ticker_html += f"""
+            <div class="ticker-row">
+                <div class="ticker-coin-info">
+                    <img src="{logo_base.format(coin_only)}" class="ticker-logo" onerror="this.src='https://www.bitkub.com/static/images/icons/default.png'">
+                    <div>
+                        <div class="ticker-symbol">{coin_only}<span style="font-size:0.7rem; color:#666">/THB</span></div>
+                        <div class="ticker-volume">ปริมาณ: {vol_str}</div>
                     </div>
-                """, unsafe_allow_html=True)
-
-    st.divider()
+                </div>
+                <div class="ticker-sparkline-box">
+                    {spark_html}
+                </div>
+                <div class="ticker-price-box">
+                    <div class="ticker-last-price">{float(data['last']):,.2f}</div>
+                    <div class="ticker-pct" style="color: {color}">{"+" if pct > 0 else ""}{pct}%</div>
+                </div>
+            </div>
+            """
+            
+    ticker_html += "</div>"
+    st.markdown(ticker_html, unsafe_allow_html=True)
     
     main_tabs = st.tabs(["💎 Strategic Overview", "🕒 Daily Detail", "📊 Historical Logs"])
     
