@@ -92,7 +92,13 @@ class BackgroundMonitor:
                                     
                                     # Format specific alerts
                                     for s in sigs:
-                                        msg += f"  📈 **แจ้งเตือน: {s}**\n"
+                                        icon = "🔸" # Default
+                                        if "ซื้อ" in s or "ขาขึ้น" in s:
+                                            icon = "🟢"
+                                        elif "ขาย" in s or "ขาลง" in s:
+                                            icon = "🔴"
+                                        
+                                        msg += f"  {icon} **แจ้งเตือน: {s}**\n"
                                     
                                     messages.append(msg)
                                     pending_updates[sym] = state_key
