@@ -1,339 +1,377 @@
 import streamlit as st
 import pandas as pd
-import pandas_ta as ta
-import requests
 import time
+from services.bitkub_service import BitkubService
+from services.line_messaging import LineMessagingService  # New Service
+from utils.indicators import calculate_indicators, check_signals
+from utils.charts import create_advanced_chart, create_rsi_chart
+
+import threading
 from datetime import datetime
 
-# --- 1. Page Configuration & Custom CSS (Orange Theme) ---
+# Page Config
 st.set_page_config(
-    page_title="Bitkub Trading Signals",
-    page_icon="🍊",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="Bitkub Crypto Monitor",
+    page_icon="📈",
+    layout="wide"
 )
 
-# Custom Orange Theme CSS
-st.markdown("""
+# Initialize Services
+bitkub = BitkubService()
+
+# Initialize LINE Messaging Service (Singleton)
+@st.cache_resource
+def get_line_service():
+    return LineMessagingService()
+
+line_service = get_line_service()
+
+# --- Background Monitor (Singleton) ---
+class BackgroundMonitor:
+    def __init__(self, line_service):
+        self.line_service = line_service
+        self.is_running = False
+        self.last_alert_dict = {} # Thread-safe alert history
+        self.symbols = ['BTC_THB', 'ETH_THB', 'SCRT_THB', 'POW_THB', 'SPEC_THB'] # Sync with main list if possible, or pass in
+        self.thread = None
+
+    def start(self):
+        if not self.is_running:
+            self.is_running = True
+            self.thread = threading.Thread(target=self._run, daemon=True)
+            self.thread.start()
+            print("Background Monitor Started!")
+
+    def _run(self):
+        while self.is_running:
+            try:
+                messages = []
+                pending_updates = {}
+                
+                # 1. Loop through symbols
+                for sym in self.symbols:
+                    # Default Timeframe 1h for background monitoring
+                    timeframe = "1h" 
+                    try:
+                        # Fetch Candles for Signals
+                        df = bitkub.get_candles(sym, timeframe=timeframe)
+                        
+                        # Fetch Ticker for % Change
+                        ticker = bitkub.get_ticker(sym)
+                        percent_change = 0.0
+                        if ticker and isinstance(ticker, list) and len(ticker) > 0:
+                            percent_change = float(ticker[0].get('percent_change', 0))
+                        
+                        if not df.empty:
+                            df = calculate_indicators(df)
+                            sigs = check_signals(df)
+                            
+                            if sigs:
+                                # Check duplicate alert
+                                state_key = f"{sym}_{timeframe}_{df.index[-1]}"
+                                if self.last_alert_dict.get(sym) != state_key:
+                                    last_price = df['close'].iloc[-1]
+                                    
+                                    # Determine Action
+                                    action = "เฝ้าระวัง"
+                                    has_buy = any("สัญญาณซื้อ" in s or "แนวโน้มขาขึ้น" in s for s in sigs)
+                                    has_sell = any("สัญญาณขาย" in s or "แนวโน้มขาลง" in s for s in sigs)
+                                    if has_buy and not has_sell:
+                                        action = "ซื้อ"
+                                    elif has_sell and not has_buy:
+                                        action = "ขาย"
+                                    elif has_buy and has_sell:
+                                        action = "ระมัดระวัง (Mixed)"
+                                        
+                                    # Format Message
+                                    short_sym = sym.replace("_THB", "")
+                                    change_sign = "+" if percent_change >= 0 else ""
+                                    
+                                    msg = f"🪙 {short_sym}: {last_price:,.2f} ({change_sign}{percent_change:.2f}%)\n"
+                                    msg += f" - analyze : {action}\n"
+                                    
+                                    # Format specific alerts
+                                    for s in sigs:
+                                        msg += f"  📈 **แจ้งเตือน: {s}**\n"
+                                    
+                                    messages.append(msg)
+                                    pending_updates[sym] = state_key
+                    except Exception as e:
+                        print(f"Bg Error {sym}: {e}")
+                
+                # 2. Send Batch Alert
+                if messages and self.line_service:
+                    full_msg = "🔔 สรุปราคา Crypto\n\n" + "\n".join(messages)
+                    if self.line_service.send_message(full_msg):
+                        print(f"Sent Batch Alert: {len(messages)} symbols")
+                        self.last_alert_dict.update(pending_updates)
+
+                # 3. Sleep for 60 seconds
+                time.sleep(60)
+                
+            except Exception as e:
+                print(f"Background Loop Error: {e}")
+                time.sleep(60)
+
+@st.cache_resource
+def start_background_monitor(_line_service):
+    if _line_service:
+        monitor = BackgroundMonitor(_line_service)
+        monitor.start()
+        return monitor
+    return None
+
+# Start the background monitor immediately
+if line_service:
+    start_background_monitor(line_service)
+
+
+def main():
+    st.set_page_config(page_title="Bitkub Monitor", layout="wide")
+    st.title("📈 Bitkub Crypto Monitor (ระบบติดตามแนวโน้มรายวัน)")
+
+    # Sidebar
+    st.sidebar.header("การตั้งค่า")
+    
+    # Custom Symbol List
+    symbol_list = ['BTC_THB', 'ETH_THB', 'SCRT_THB', 'POW_THB', 'SPEC_THB']
+    
+    # Default to SPEC_THB
+    default_symbol = 'SPEC_THB'
+    default_idx = symbol_list.index(default_symbol) if default_symbol in symbol_list else 0
+    
+    selected_symbol = st.sidebar.selectbox("เลือกเหรียญ", symbol_list, index=default_idx)
+    timeframe = st.sidebar.selectbox("ช่วงเวลา (Timeframe)", ["15m", "1h", "4h", "1D"], index=1) # Default 1h
+
+    # Refresh Button
+    if st.sidebar.button("รีเฟรชข้อมูล"):
+        st.rerun()
+
+    # Toggle Recent Trades to save bandwidth
+    show_trades = st.sidebar.checkbox("แสดงการซื้อขายล่าสุด", value=False)
+
+
+    # Main Content
+    
+    # Main Content
+    
+    # 1. Global Signal Dashboard (Responsive Layout)
+    st.subheader(f"สถานะเหรียญ ({timeframe})")
+    
+    # Custom CSS for Responsive Grid
+    # Custom CSS for Responsive Grid
+    st.markdown("""
 <style>
-    /* Primary Color Accents */
-    :root {
-        --primary-color: #FF9F1C;
-        --secondary-color: #FF5733;
-        --background-color: #1E1E1E;
-        --text-color: #FFFFFF;
-    }
-    
-    /* Headers */
-    h1, h2, h3 {
-        color: #FF9F1C !important;
-    }
-    
-    /* Buttons */
-    div.stButton > button {
-        background-color: #FF9F1C;
-        color: white;
-        border: none;
-        border-radius: 5px;
-        font-weight: bold;
-    }
-    div.stButton > button:hover {
-        background-color: #FF5733;
-        color: white;
-    }
-    
-    /* Metrics */
-    [data-testid="stMetricValue"] {
-        color: #FF9F1C;
-        font-weight: bold;
-    }
-    [data-testid="stMetricLabel"] {
-        color: #E0E0E0;
-    }
-    
-    /* Dataframes */
-    [data-testid="stDataFrame"] {
-        border: 1px solid #333;
-    }
-    
-    /* Signal Badges */
-    .signal-buy {
-        background-color: #28a745;
-        color: white;
-        padding: 5px 10px;
-        border-radius: 5px;
-        font-weight: bold;
-        text-align: center;
-    }
-    .signal-sell {
-        background-color: #dc3545;
-        color: white;
-        padding: 5px 10px;
-        border-radius: 5px;
-        font-weight: bold;
-        text-align: center;
-    }
-    .signal-wait {
-        background-color: #6c757d;
-        color: white;
-        padding: 5px 10px;
-        border-radius: 5px;
-        font-weight: bold;
-        text-align: center;
-    }
+.signal-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    justify-content: center; /* Center on large screens, or flex-start */
+}
+.signal-card {
+    flex: 1 1 200px; /* Grow, shrink, min-width 200px */
+    padding: 15px;
+    border-radius: 10px;
+    color: white;
+    text-align: center;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+}
+.signal-card:hover {
+    transform: translateY(-5px);
+}
+.signal-card h4 {
+    margin: 0;
+    margin-bottom: 5px;
+    font-size: 1.2rem;
+    color: white;
+}
+.signal-card .price {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+.signal-card .status {
+    font-size: 0.9rem;
+}
+/* HTML Details/Summary Styling */
+details > summary {
+    list-style: none;
+    cursor: pointer;
+    font-size: 0.8rem;
+    opacity: 0.8;
+    margin-top: 5px;
+}
+details > summary::-webkit-details-marker {
+    display: none;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. Configuration & Constants ---
-SYMBOLS = [
-    "SPEC_THB",
-    "BTC_THB",
-    "ETH_THB",
-    "SCRT_THB",
-    "POW_THB"
-]
+    # Dictionaries to store data for later use
+    data_cache = {}
+    
+    # Prepare HTML strings
+    cards_html = []
+    
+    # Batch Alert Storage
+    batch_messages = []
+    pending_alert_updates = {}
+    
+    # Progress bar (optional, might be distracting if fast, keeping it minimal)
+    # progress_bar = st.progress(0)
 
-TIMEFRAME_MAPPING = {
-    "1 Hour": "60",
-    "1 Day": "1D"
-}
-
-API_BASE_URL = "https://api.bitkub.com"
-
-# --- 3. Data Fetching Functions ---
-@st.cache_data(ttl=30)  # Cache ticker data for 30 seconds
-def get_ticker_data():
-    """Fetches real-time ticker data from Bitkub API V3."""
-    try:
-        url = f"{API_BASE_URL}/api/v3/market/ticker"
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        
-        # V3 returns a list of objects. Convert to dict for easier lookup.
-        ticker_dict = {
-            item['symbol']: {
-                'last': float(item['last']),
-                'percentChange': float(item['percent_change'])
-            } for item in data
-        }
-        return ticker_dict
-    except Exception as e:
-        st.error(f"Error fetching ticker data: {e}")
-        return None
-
-@st.cache_data(ttl=60)  # Cache candles for 1 minute
-def get_candles(symbol, timeframe_minutes):
-    """Fetches OHLC data (candles) from Bitkub API (TradingView endpoint)."""
-    try:
-        # Calculate timestamps (Bitkub needs 'from' and 'to' in seconds)
-        now = int(time.time())
-        # Calculate numeric resolution for timestamp calculation
-        res_int = 1440 if timeframe_minutes == '1D' else int(timeframe_minutes)
-        start = now - (200 * res_int * 60)
-        
-        # NOTE: Bitkub uses a TradingView-style endpoint for candles
-        # Endpoint: https://api.bitkub.com/tradingview/history
-        url = f"{API_BASE_URL}/tradingview/history"
-        
-        params = {
-            "symbol": symbol,
-            "resolution": timeframe_minutes,
-            "from": start,
-            "to": now
-        }
-        
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
-        
-        if data.get('s') != 'ok':
-            return None
+    for i, sym in enumerate(symbol_list):
+        try:
+            # Fetch data (Sync loop, could be slow if many symbols but 5 is fine)
+            df = bitkub.get_candles(sym, timeframe=timeframe)
             
-        # Convert to DataFrame
-        # Bitkub TV structure: { "t": [], "o": [], "h": [], "l": [], "c": [], "v": [], "s": "ok" }
-        df = pd.DataFrame({
-            "timestamp": data['t'],
-            "open": data['o'],
-            "high": data['h'],
-            "low": data['l'],
-            "close": data['c'],
-            "volume": data['v']
-        })
-        
-        # Convert timestamp to datetime and close to float
-        df['datetime'] = pd.to_datetime(df['timestamp'], unit='s')
-        df['close'] = df['close'].astype(float)
-        df['high'] = df['high'].astype(float)
-        df['low'] = df['low'].astype(float)
-        
-        return df
-        
-    except Exception as e:
-        st.error(f"Error fetching candles for {symbol}: {e}")
-        return None
+            if not df.empty:
+                df = calculate_indicators(df)
+                data_cache[sym] = df
+                
+                last_price = df['close'].iloc[-1]
+                sigs = check_signals(df)
+                
+                # Determine Color & Content
+                box_color = "#262730" # Default Dark
+                border_style = "1px solid #4e4e4e"
+                status_icon = "✅"
+                status_text = "ปกติ"
+                details_html = ""
 
-# --- 4. Technical Analysis & Signal Logic ---
-def analyze_market(df):
-    """Calculates RSI, Bollinger Bands and determines trading signal."""
-    if df is None or len(df) < 20:
-        return None, "INSUFFICIENT_DATA"
-    
-    # Work on a copy to avoid modifying cached data and naming conflicts
-    df = df.copy()
-    
-    # Calculate RSI (14)
-    df.ta.rsi(length=14, append=True)
-    
-    # Calculate Bollinger Bands (20, 2)
-    df.ta.bbands(length=20, std=2, append=True)
-    
-    # Column names can vary by system (e.g., BBL_20_2.0 vs BBL_20_2.0_2.0)
-    # Use robust matching to find RSI and BB columns
-    rsi_col = next((c for c in df.columns if c.startswith('RSI_14')), 'RSI_14')
-    lower_band_col = next((c for c in df.columns if c.startswith('BBL_20')), 'BBL_20_2.0')
-    upper_band_col = next((c for c in df.columns if c.startswith('BBU_20')), 'BBU_20_2.0')
-    
-    # Get latest row
-    latest = df.iloc[-1]
-    
-    # Signal Logic
-    signal = "NEUTRAL"
-    reason = ""
-    
-    if rsi_col not in df.columns or lower_band_col not in df.columns:
-        signal = "WAIT (Calc)"
-    elif pd.isna(latest[rsi_col]) or pd.isna(latest[lower_band_col]):
-        signal = "WAIT (Calc)"
-    elif latest[rsi_col] < 30 and latest['close'] <= latest[lower_band_col]:
-        signal = "BUY"
-        reason = f"RSI({latest[rsi_col]:.1f}) < 30 & Price <= LowBB"
-    elif latest[rsi_col] > 70 and latest['close'] >= latest[upper_band_col]:
-        signal = "SELL"
-        reason = f"RSI({latest[rsi_col]:.1f}) > 70 & Price >= UpBB"
-    else:
-        signal = "NEUTRAL"
-    
-    return df, signal
-
-# --- 5. Main Dashboard Display ---
-def main():
-    st.title("🍊 Bitkub Crypto Trading Dashboard")
-    st.markdown("Monitor prices and signals for specific coins using **RSI + Bollinger Bands** strategy.")
-    
-    # Sidebar
-    with st.sidebar:
-        st.header("Settings")
-        timeframe_name = st.selectbox("Select Timeframe", list(TIMEFRAME_MAPPING.keys()), index=1)
-        timeframe_val = TIMEFRAME_MAPPING[timeframe_name]
-        
-        if st.button("Refresh Data", use_container_width=True):
-            st.rerun()
-            
-        st.info(f"**Strategy:**\n\n🟢 **BUY**: RSI < 30 & Price touches Lower Band\n\n🔴 **SELL**: RSI > 70 & Price touches Upper Band")
-        st.markdown("---")
-        st.markdown(f"**Current Time:** {datetime.now().strftime('%H:%M:%S')}")
-
-    # Main Data Fetching
-    with st.spinner("Fetching data from Bitkub API..."):
-        ticker_data = get_ticker_data()
-    
-    if not ticker_data:
-        st.error("Failed to load ticker data.")
-        return
-
-    # Dashboard Grid
-    st.subheader(f"Market Overview ({timeframe_name})")
-    
-    cols = st.columns(len(SYMBOLS)) # Responsive columns
-    
-    # Store detailed data for the second section
-    analysis_results = {}
-    
-    # Iterate through symbols to display cards
-    for idx, symbol in enumerate(SYMBOLS):
-        
-        # Ticker Info
-        if symbol not in ticker_data:
-            with cols[idx % 3]: # Simple wrap logic if screen is small, though st.columns handles it
-                st.warning(f"{symbol}: No Data")
-            continue
-            
-        ticker = ticker_data[symbol]
-        last_price = ticker['last']
-        change_pct = ticker['percentChange']
-        
-        # Technical Analysis
-        df = get_candles(symbol, timeframe_val)
-        analyzed_df, signal = analyze_market(df)
-        analysis_results[symbol] = (analyzed_df, signal)
-        
-        # Custom Card UI
-        with cols[idx]:
-            # Get display name (e.g., BTC from BTC_THB)
-            display_name = symbol.split('_')[0]
-            
-            st.markdown(f"""
-            <div style="background-color: #2D2D2D; padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #444;">
-                <h3 style="margin:0; color: #FF9F1C;">{display_name}</h3>
-                <p style="font-size: 0.8em; color: #888;">{symbol}</p>
-                <h2 style="margin:10px 0;">฿{last_price:,.2f}</h2>
-                <p style="color: {'#28a745' if change_pct >= 0 else '#dc3545'}; font-size: 1.1em; font-weight: bold;">
-                    {change_pct:+.2f}%
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Signal Badge
-            if signal == "BUY":
-                st.markdown(f'<div class="signal-buy">BUY SIGNAL</div>', unsafe_allow_html=True)
-            elif signal == "SELL":
-                st.markdown(f'<div class="signal-sell">SELL SIGNAL</div>', unsafe_allow_html=True)
+                if sigs:
+                    border_style = "none"
+                    has_buy = any("สัญญาณซื้อ" in s or "แนวโน้มขาขึ้น" in s for s in sigs)
+                    has_sell = any("สัญญาณขาย" in s or "แนวโน้มขาลง" in s for s in sigs)
+                    
+                    if has_buy and not has_sell:
+                        box_color = "#28a745" # Green
+                    elif has_sell and not has_buy:
+                        box_color = "#ff4b4b" # Red
+                    elif has_buy and has_sell:
+                        box_color = "#ffa726" # Orange
+                    else:
+                        box_color = "#ff4b4b" # Fallback Red
+                    
+                    status_icon = "⚠️"
+                    status_text = f"{len(sigs)} สัญญาณ"
+                    
+                    # Create details list
+                    list_items = "".join([f"<li style='text-align:left;'>{s}</li>" for s in sigs])
+                    details_html = f"""
+<details>
+    <summary>▼ รายละเอียด</summary>
+    <ul style="font-size: 0.8rem; padding-left: 20px; margin: 5px 0;">
+        {list_items}
+    </ul>
+</details>
+"""
+                    
+                # Construct HTML Card
+                card = f"""
+<div class="signal-card" style="background-color: {box_color}; border: {border_style};">
+    <h4>{sym}</h4>
+    <div class="price">{last_price:,.2f}</div>
+    <div class="status">{status_icon} {status_text}</div>
+    {details_html}
+</div>
+"""
+                cards_html.append(card)
+                
             else:
-                st.markdown(f'<div class="signal-wait">{signal}</div>', unsafe_allow_html=True)
-                
-    st.markdown("---")
+                # Error/No Data Card
+                cards_html.append(f"""
+<div class="signal-card" style="background-color: #333; border: 1px dashed red;">
+    <h4>{sym}</h4>
+    <div>No Data</div>
+</div>
+""")
 
-    # Detailed View
-    st.subheader("Detailed Analysis")
+        except Exception as e:
+            print(f"Error scanning {sym}: {e}")
+            cards_html.append(f"""
+<div class="signal-card" style="background-color: #333;">
+    <h4>{sym}</h4>
+    <div>Error</div>
+</div>
+""")
+
+    # Render CSS Grid
+    if cards_html:
+        st.markdown(f"""
+<div class="signal-container">
+{''.join(cards_html)}
+</div>
+""", unsafe_allow_html=True)
     
-    selected_symbol = st.selectbox("Select Coin for details", SYMBOLS)
-    
-    if selected_symbol in analysis_results:
-        df, signal = analysis_results[selected_symbol]
+    st.markdown("---") # Separator
+
+    # 3. Visualization for Selected Symbol
+    col1, col2 = st.columns([3, 1])
+
+    with col1:
+        # Ticker Info
+        ticker = bitkub.get_ticker(selected_symbol)
+        if ticker and selected_symbol in ticker:
+            data = ticker[selected_symbol]
+            last_price = data['last']
+            percent_change = data['percentChange']
+            
+            st.metric(
+                label=f"ราคาล่าสุด {selected_symbol}",
+                value=f"{last_price:,.2f} บาท",
+                delta=f"{percent_change}%"
+            )
         
-        if df is not None:
-            # Find column names dynamically
-            rsi_col = next((c for c in df.columns if c.startswith('RSI_14')), 'RSI_14')
-            lower_band_col = next((c for c in df.columns if c.startswith('BBL_20')), 'BBL_20_2.0')
-            upper_band_col = next((c for c in df.columns if c.startswith('BBU_20')), 'BBU_20_2.0')
-
-            # Show latest Indicator values
-            latest = df.iloc[-1]
-            rsi = latest.get(rsi_col, 0)
-            upper = latest.get(upper_band_col, 0)
-            lower = latest.get(lower_band_col, 0)
+        # Use cached data if available, else fetch (should be in cache)
+        df = data_cache.get(selected_symbol)
+        
+        if df is None or df.empty:
+             with st.spinner("กำลังดึงข้อมูลย้อนหลัง..."):
+                df = bitkub.get_candles(selected_symbol, timeframe=timeframe)
+                if not df.empty:
+                    df = calculate_indicators(df)
+        
+        if df is not None and not df.empty:
+            # Charts
+            st.subheader("กราฟราคา & EMA (Price Action)")
+            fig_price = create_advanced_chart(df, selected_symbol)
+            st.plotly_chart(fig_price, width="stretch")
             
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.metric("RSI (14)", f"{rsi:.2f}")
-            with c2:
-                st.metric("Upper Band", f"{upper:,.2f}")
-            with c3:
-                st.metric("Lower Band", f"{lower:,.2f}")
-                
-            # Chart (Simple Streamlit Line Chart for Price & Bands)
-            st.markdown("#### Price Action & Bollinger Bands")
-            chart_data = df[['datetime', 'close', upper_band_col, lower_band_col]].copy()
-            chart_data.set_index('datetime', inplace=True)
-            st.line_chart(chart_data)
-            
-            # Raw Data
-            with st.expander("View Raw Data"):
-                st.dataframe(df.sort_values(by='datetime', ascending=False).head(50))
-                
+            st.subheader("ดัชนี RSI")
+            fig_rsi = create_rsi_chart(df)
+            st.plotly_chart(fig_rsi, width="stretch")
         else:
-            st.write("No historical data available for analysis.")
+            st.warning("ไม่มีข้อมูลย้อนหลัง")
+
+    with col2:
+        if show_trades:
+            st.subheader("การซื้อขายล่าสุด")
+            trades = bitkub.get_recent_trades(selected_symbol)
+            if trades:
+                # Format trade data
+                trade_data = []
+                for t in trades[:15]: # Show last 15
+                    trade_data.append({
+                        "เวลา": datetime.fromtimestamp(t[0]).strftime('%H:%M:%S'),
+                        "ราคา": f"{t[1]:,.2f}",
+                        "จำนวน": f"{t[2]:.4f}",
+                        "ประเภท": t[3].upper() # BUY/SELL
+                    })
+                st.table(pd.DataFrame(trade_data))
+            else:
+                st.write("ไม่มีข้อมูลการซื้อขายล่าสุด")
+        else:
+            st.info("💡 ปิดการแสดงผลการซื้อขายล่าสุด (ช่วยลดการใช้เน็ต)")
+
+    # Auto Refresh Logic
+    st.sidebar.markdown("---")
+    if st.sidebar.checkbox("อัปเดตอัตโนมัติ (ทุก 1 นาที)", value=True):
+        time.sleep(60)
+        st.rerun()
 
 if __name__ == "__main__":
+    from datetime import datetime
+    import time
     main()

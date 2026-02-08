@@ -1,0 +1,27 @@
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+env/
+.venv/
+.env
+
+# Streamlit
+.streamlit/*
+!.streamlit/config.toml
+monitor/.streamlit/*
+!monitor/.streamlit/config.toml
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Project Specific
+*.log
