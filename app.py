@@ -126,11 +126,20 @@ class BackgroundMonitor:
                         print(f"Sent Batch Alert: {len(messages)} symbols")
                         self.last_alert_dict.update(pending_updates)
 
-                # 3. Send Hourly Report (Heartbeat)
-                if is_hourly_report and hourly_messages and self.line_service:
-                    full_msg = "� รายงานสถานะรายชั่วโมง\n\n" + "\n".join(hourly_messages)
+                # 3. Send Hourly Report (Heartbeat) - Restricted to 06:00 - 22:00
+                current_hour = datetime.now().hour
+                is_active_hours = 6 <= current_hour < 22 # 06:00 to 21:59
+
+                if is_hourly_report and hourly_messages and self.line_service and is_active_hours:
+                    full_msg = "🕒 รายงานสถานะรายชั่วโมง\n\n" + "\n".join(hourly_messages)
                     if self.line_service.send_message(full_msg):
                         print(f"Sent Hourly Report: {len(hourly_messages)} symbols")
+                        self.last_hourly_report_time = current_time
+                elif is_hourly_report:
+                    # Reset the timer even if we suppressed the message due to hours or no service
+                    if is_hourly_report:
+                        if not is_active_hours:
+                            print(f"Hourly Report Suppressed (Hour: {current_hour})")
                         self.last_hourly_report_time = current_time
 
                 # 3. Sleep for 60 seconds
