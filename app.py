@@ -34,6 +34,7 @@ class BackgroundMonitor:
         self.last_alert_dict = {} # Thread-safe alert history
         self.symbols = ['BTC_THB', 'ETH_THB', 'SCRT_THB', 'POW_THB', 'SPEC_THB'] # Sync with main list if possible, or pass in
         self.thread = None
+        self.last_hourly_report_time = time.time()
 
     def start(self):
         if not self.is_running:
@@ -42,11 +43,45 @@ class BackgroundMonitor:
             self.thread.start()
             print("Background Monitor Started!")
 
+    def _format_single_message(self, sym, last_price, percent_change, sigs):
+        # Determine Action
+        action = "เฝ้าระวัง"
+        has_buy = any("สัญญาณซื้อ" in s or "แนวโน้มขาขึ้น" in s for s in sigs)
+        has_sell = any("สัญญาณขาย" in s or "แนวโน้มขาลง" in s for s in sigs)
+        if has_buy and not has_sell:
+            action = "ซื้อ"
+        elif has_sell and not has_buy:
+            action = "ขาย"
+        elif has_buy and has_sell:
+            action = "ระมัดระวัง (Mixed)"
+            
+        # Format Message
+        short_sym = sym.replace("_THB", "")
+        change_sign = "+" if percent_change >= 0 else ""
+        
+        msg = f"🪙 {short_sym}: {last_price:,.2f} ({change_sign}{percent_change:.2f}%)\n"
+        msg += f" - analyze : {action}\n"
+        
+        # Format specific alerts
+        for s in sigs:
+            icon = "🔸" # Default
+            if "ซื้อ" in s or "ขาขึ้น" in s:
+                icon = "🟢"
+            elif "ขาย" in s or "ขาลง" in s:
+                icon = "🔴"
+            
+            msg += f"  {icon} **แจ้งเตือน: {s}**\n"
+        
+        return msg
+
     def _run(self):
         while self.is_running:
             try:
                 messages = []
+                hourly_messages = []
                 pending_updates = {}
+                current_time = time.time()
+                is_hourly_report = (current_time - self.last_hourly_report_time) >= 3600
                 
                 # 1. Loop through symbols
                 for sym in self.symbols:
@@ -66,51 +101,37 @@ class BackgroundMonitor:
                             df = calculate_indicators(df)
                             sigs = check_signals(df)
                             
+                            # Generate Message using Helper (Always needed for hourly or alerts)
+                            last_price = df['close'].iloc[-1]
+                            msg = self._format_single_message(sym, last_price, percent_change, sigs)
+
+                            # Logic A: Signal Alert (Only if signals exist and new state)
                             if sigs:
-                                # Check duplicate alert
                                 state_key = f"{sym}_{timeframe}_{df.index[-1]}"
                                 if self.last_alert_dict.get(sym) != state_key:
-                                    last_price = df['close'].iloc[-1]
-                                    
-                                    # Determine Action
-                                    action = "เฝ้าระวัง"
-                                    has_buy = any("สัญญาณซื้อ" in s or "แนวโน้มขาขึ้น" in s for s in sigs)
-                                    has_sell = any("สัญญาณขาย" in s or "แนวโน้มขาลง" in s for s in sigs)
-                                    if has_buy and not has_sell:
-                                        action = "ซื้อ"
-                                    elif has_sell and not has_buy:
-                                        action = "ขาย"
-                                    elif has_buy and has_sell:
-                                        action = "ระมัดระวัง (Mixed)"
-                                        
-                                    # Format Message
-                                    short_sym = sym.replace("_THB", "")
-                                    change_sign = "+" if percent_change >= 0 else ""
-                                    
-                                    msg = f"🪙 {short_sym}: {last_price:,.2f} ({change_sign}{percent_change:.2f}%)\n"
-                                    msg += f" - analyze : {action}\n"
-                                    
-                                    # Format specific alerts
-                                    for s in sigs:
-                                        icon = "🔸" # Default
-                                        if "ซื้อ" in s or "ขาขึ้น" in s:
-                                            icon = "🟢"
-                                        elif "ขาย" in s or "ขาลง" in s:
-                                            icon = "🔴"
-                                        
-                                        msg += f"  {icon} **แจ้งเตือน: {s}**\n"
-                                    
                                     messages.append(msg)
                                     pending_updates[sym] = state_key
+                            
+                            # Logic B: Hourly Report (Force Send regardless of signals)
+                            if is_hourly_report:
+                                hourly_messages.append(msg)
+
                     except Exception as e:
                         print(f"Bg Error {sym}: {e}")
                 
-                # 2. Send Batch Alert
+                # 2. Send Signal Alerts (Priority)
                 if messages and self.line_service:
-                    full_msg = "🔔 สรุปราคา Crypto\n\n" + "\n".join(messages)
+                    full_msg = "🔔 สรุปราคา Crypto (Signal)\n\n" + "\n".join(messages)
                     if self.line_service.send_message(full_msg):
                         print(f"Sent Batch Alert: {len(messages)} symbols")
                         self.last_alert_dict.update(pending_updates)
+
+                # 3. Send Hourly Report (Heartbeat)
+                if is_hourly_report and hourly_messages and self.line_service:
+                    full_msg = "� รายงานสถานะรายชั่วโมง\n\n" + "\n".join(hourly_messages)
+                    if self.line_service.send_message(full_msg):
+                        print(f"Sent Hourly Report: {len(hourly_messages)} symbols")
+                        self.last_hourly_report_time = current_time
 
                 # 3. Sleep for 60 seconds
                 time.sleep(60)
